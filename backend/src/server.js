@@ -21,7 +21,23 @@ const { sendSms, getSmsMode, getWhatsAppMode } = require('./services/notificatio
 const { processSosNotificationQueue } = require('./services/sosNotificationWorker');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, Render health checks)
+    if (!origin) return callback(null, true);
+    // Allow any localhost port in development
+    if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return callback(null, true);
+    // Allow any Vercel deployment
+    if (/\.vercel\.app$/.test(origin)) return callback(null, true);
+    // Allow explicitly configured frontend URL
+    const allowed = process.env.FRONTEND_URL;
+    if (allowed && origin === allowed) return callback(null, true);
+    // Allow render.com internal communication
+    if (/\.onrender\.com$/.test(origin)) return callback(null, true);
+    return callback(null, true); // open during development — tighten in production if needed
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
