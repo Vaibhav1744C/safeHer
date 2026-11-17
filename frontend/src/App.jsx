@@ -15,7 +15,7 @@ import AlertHistory from './components/AlertHistory';
 import PushSetup from './components/PushSetup';
 import api from './api';
 
-const API_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'https://safeher-backend-6kpx.onrender.com';
 
 const TABS = [
   { id: 'home',     Icon: Home,          label: 'Home'     },
