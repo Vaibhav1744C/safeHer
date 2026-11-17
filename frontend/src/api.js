@@ -1,8 +1,10 @@
 import axios from 'axios';
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'https://safeher-backend-6kpx.onrender.com/api';
+// Ensure /api suffix is always present
+const API_BASE = BASE_URL.endsWith('/api') ? BASE_URL : BASE_URL.replace(/\/$/, '') + '/api';
 
-const api = axios.create({ baseURL: BASE_URL });
+const api = axios.create({ baseURL: API_BASE });
 
 // Attach token on every request
 api.interceptors.request.use((config) => {
