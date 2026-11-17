@@ -10,8 +10,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 5000
+      - key: SMS_PROVIDER
+        value: twilio
       - key: JWT_SECRET
         sync: false
       - key: DATABASE_URL
@@ -46,5 +46,5 @@ services:
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     plan: free
     envVars:
-      - key: PORT
-        value: 6000
+      - key: PYTHON_VERSION
+        value: 3.11.0
