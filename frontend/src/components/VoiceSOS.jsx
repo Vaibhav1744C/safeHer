@@ -9,15 +9,23 @@ const DANGER_KEYWORDS = [
 ];
 
 export default function VoiceSOS({ onTrigger, disabled }) {
-  const [listening, setListening]   = useState(false);
-  const [lastHeard, setLastHeard]   = useState('');
-  const [error, setError]           = useState('');
-  const [triggered, setTriggered]   = useState(false);
-  const recognitionRef              = useRef(null);
+  const [listening, setListening] = useState(false);
+  const [lastHeard, setLastHeard] = useState('');
+  const [error, setError]         = useState('');
+
+  // Use refs so callbacks always read the latest values without re-creating
+  const recognitionRef  = useRef(null);
+  const triggeredRef    = useRef(false);   // cooldown flag — avoids stale closure bug
+  const onTriggerRef    = useRef(onTrigger);
+  const shouldRunRef    = useRef(false);   // tracks whether we want recognition active
+
+  // Keep onTriggerRef current without re-creating startListening
+  useEffect(() => { onTriggerRef.current = onTrigger; }, [onTrigger]);
 
   const stopListening = useCallback(() => {
+    shouldRunRef.current = false;
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try { recognitionRef.current.abort(); } catch (_) {}
       recognitionRef.current = null;
     }
     setListening(false);
@@ -25,12 +33,17 @@ export default function VoiceSOS({ onTrigger, disabled }) {
 
   const startListening = useCallback(() => {
     setError('');
-    setTriggered(false);
+    triggeredRef.current = false;
+    shouldRunRef.current = true;
+
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setError('Voice recognition is not supported in this browser. Use Chrome or Edge.');
+      setError('Voice recognition is not supported. Use Chrome or Edge.');
       return;
     }
+
+    // Don't create a second instance if already running
+    if (recognitionRef.current) return;
 
     const recognition = new SpeechRecognition();
     recognition.continuous      = true;
@@ -38,50 +51,70 @@ export default function VoiceSOS({ onTrigger, disabled }) {
     recognition.lang            = 'en-IN';
     recognition.maxAlternatives = 3;
 
-    recognition.onstart  = () => setListening(true);
+    recognition.onstart = () => setListening(true);
 
     recognition.onresult = (event) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript.toLowerCase().trim();
         setLastHeard(transcript);
-        const matched = DANGER_KEYWORDS.find((kw) => transcript.includes(kw));
-        if (matched && !triggered) {
-          setTriggered(true);
-          setLastHeard(`Keyword detected: "${matched}"`);
-          onTrigger(matched);
-          setTimeout(() => setTriggered(false), 10000);
+
+        // Also check all alternative transcripts for better accuracy
+        for (let a = 0; a < event.results[i].length; a++) {
+          const alt = event.results[i][a].transcript.toLowerCase().trim();
+          const matched = DANGER_KEYWORDS.find((kw) => alt.includes(kw));
+          if (matched && !triggeredRef.current) {
+            triggeredRef.current = true;
+            setLastHeard(`Keyword detected: "${matched}"`);
+            onTriggerRef.current(matched);
+            // Reset cooldown after 10 seconds
+            setTimeout(() => { triggeredRef.current = false; }, 10000);
+            break;
+          }
         }
       }
     };
 
     recognition.onerror = (e) => {
-      if (e.error === 'no-speech') return;
+      if (e.error === 'no-speech') return;       // normal silence — ignore
+      if (e.error === 'aborted') return;          // we called abort() ourselves — ignore
       if (e.error === 'not-allowed') {
         setError('Microphone access denied. Allow mic access in browser settings.');
+        shouldRunRef.current = false;
         setListening(false);
-      } else {
-        console.warn('Speech error:', e.error);
+        return;
       }
+      console.warn('[VoiceSOS] speech error:', e.error);
     };
 
     recognition.onend = () => {
-      if (recognitionRef.current) {
-        setTimeout(() => { try { recognitionRef.current?.start(); } catch (_) {} }, 500);
-      } else {
-        setListening(false);
+      recognitionRef.current = null;
+      setListening(false);
+      // Auto-restart only if we still want recognition running
+      if (shouldRunRef.current) {
+        setTimeout(() => {
+          if (shouldRunRef.current) startListening();
+        }, 600);
       }
     };
 
     recognitionRef.current = recognition;
-    try { recognition.start(); } catch { setError('Could not start voice recognition.'); }
-  }, [onTrigger, triggered]);
+    try {
+      recognition.start();
+    } catch (err) {
+      recognitionRef.current = null;
+      setError('Could not start voice recognition: ' + err.message);
+    }
+  }, []); // stable — no deps that change
 
-  const toggle = () => { listening ? stopListening() : startListening(); };
+  const toggle = () => {
+    if (listening) { stopListening(); } else { startListening(); }
+  };
 
+  // Auto-start on mount, stop on unmount
   useEffect(() => {
     startListening();
     return () => stopListening();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [startListening, stopListening]);
 
   return (
     <div style={{
@@ -136,7 +169,7 @@ export default function VoiceSOS({ onTrigger, disabled }) {
 
       <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 }}>
         <strong style={{ color: 'var(--text-secondary)' }}>Keywords:</strong>{' '}
-        {DANGER_KEYWORDS.slice(0, 8).join(', ')}…
+        {DANGER_KEYWORDS.join(', ')}
       </div>
     </div>
   );

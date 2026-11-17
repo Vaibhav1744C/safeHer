@@ -38,6 +38,12 @@ export default function SOSButton() {
   const pendingOptsRef    = useRef(null);
   const cameraRef         = useRef(null);
   const idempotencyKeyRef = useRef(null);
+  const loadingRef        = useRef(false);  // ref mirror of loading — avoids stale closure in voice trigger
+  const enableCameraRef   = useRef(false);  // ref mirror of enableCamera
+
+  // Keep refs in sync with state
+  useEffect(() => { loadingRef.current = loading; }, [loading]);
+  useEffect(() => { enableCameraRef.current = enableCamera; }, [enableCamera]);
 
   const hasPendingDeliveries = deliveries.some((d) => ['queued', 'processing'].includes(d.status));
 
@@ -74,7 +80,11 @@ export default function SOSButton() {
   }, []);
 
   const dispatchSOS = useCallback(async (opts = {}) => {
+    // Prevent double-dispatch (e.g. voice fires while manual is in progress)
+    if (loadingRef.current) return;
+
     setLoading(true);
+    loadingRef.current = true;
     setStatusMsg('Acquiring GPS coordinates…');
     setStatusType('info');
     if (!idempotencyKeyRef.current) {
